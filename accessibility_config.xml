@@ -1,0 +1,126 @@
+package com.example.aiassistant
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import java.util.Locale
+
+class AiVoiceController(
+    private val context: Context,
+    private val onUnknownCommand: (String, (String) -> Unit) -> Unit = { _, reply -> reply("I didn't understand that.") }
+) : TextToSpeech.OnInitListener {
+
+    private var tts: TextToSpeech? = TextToSpeech(context, this)
+    private var ttsReady = false
+    private var recognizer: SpeechRecognizer? = null
+
+    var isListening = false
+        private set
+
+    override fun onInit(status: Int) {
+        ttsReady = status == TextToSpeech.SUCCESS
+        if (ttsReady) tts?.language = Locale.getDefault()
+    }
+
+    fun speak(text: String) {
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ai-reply")
+    }
+
+    fun startListening() {
+        if (isListening) return
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            speak("Speech recognition is not available on this device.")
+            return
+        }
+
+        val sr = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+
+            override fun onError(error: Int) {
+                isListening = false
+            }
+
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val text = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?: return
+                handleCommand(text)
+            }
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+        isListening = true
+        sr.startListening(intent)
+    }
+
+    fun stopListening() {
+        recognizer?.stopListening()
+        isListening = false
+    }
+
+    fun release() {
+        recognizer?.destroy()
+        recognizer = null
+        tts?.shutdown()
+        tts = null
+    }
+
+    private fun handleCommand(raw: String) {
+        val command = raw.lowercase().trim()
+        val service = PhoneControlService.instance
+
+        if (service == null) {
+            speak("Please turn on the accessibility service first.")
+            return
+        }
+
+        when {
+            command.startsWith("open ") -> {
+                val app = command.removePrefix("open ").trim()
+                val ok = service.openAppByName(app)
+                speak(if (ok) "Opening $app." else "I couldn't find $app.")
+            }
+
+            command.startsWith("click ") -> {
+                val target = command.removePrefix("click ").trim()
+                val ok = service.clickTextOnScreen(target)
+                speak(if (ok) "Done." else "I couldn't find $target on the screen.")
+            }
+
+            command.startsWith("type ") -> {
+                val text = raw.substring(5).trim()
+                val ok = service.typeTextIntoFocusedField(text)
+                speak(if (ok) "Typed." else "There is no text field to type into.")
+            }
+
+            command == "go home" -> service.performSystemAction("HOME")
+            command == "go back" -> service.performSystemAction("BACK")
+            command == "show notifications" -> service.performSystemAction("NOTIFICATIONS")
+            command == "show recent apps" -> service.performSystemAction("RECENTS")
+            command == "scroll down" -> service.performSystemAction("SCROLL_DOWN")
+            command == "scroll up" -> service.performSystemAction("SCROLL_UP")
+
+            command == "what is on the screen" || command == "read the screen" -> {
+                speak(service.getScreenUiSummary())
+            }
+
+            else -> onUnknownCommand(raw) { reply -> speak(reply) }
+        }
+    }
+}
