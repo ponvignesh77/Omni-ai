@@ -1,0 +1,56 @@
+name: Build AI Assistant APK
+
+# Controls when the workflow will run
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Pull your repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Java 17 (required for Android Gradle Plugin 8.4+)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Set up the Android SDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 4. Install Gradle 8.7 (so you don't need local gradlew wrapper files)
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # 5. Ensure gradle.properties exists with AndroidX enabled
+      - name: Create gradle.properties if missing
+        run: |
+          if [ ! -f gradle.properties ]; then
+            echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" >> gradle.properties
+            echo "android.useAndroidX=true" >> gradle.properties
+            echo "kotlin.code.style=official" >> gradle.properties
+          fi
+
+      # 6. Compile the Kotlin code into a Debug APK
+      - name: Build Debug APK
+        run: gradle assembleDebug --stacktrace
+
+      # 7. Upload the finished APK so you can download it from GitHub
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Assistant-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
