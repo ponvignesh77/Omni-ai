@@ -1,0 +1,54 @@
+name: Build Omni AI Assistant (Kotlin)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout your repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Java 17 (Required for Kotlin and Android Gradle Plugin 8.0+)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Set up Android SDK environment
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 4. Set up Gradle build tool
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # 5. Ensure gradle.properties exists for Kotlin/AndroidX compilation
+      - name: Generate gradle.properties
+        run: |
+          if [ ! -f gradle.properties ]; then
+            echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" >> gradle.properties
+            echo "android.useAndroidX=true" >> gradle.properties
+            echo "kotlin.code.style=official" >> gradle.properties
+          fi
+
+      # 6. Compile Kotlin code and build the Android Debug APK
+      - name: Compile with Gradle
+        run: gradle assembleDebug --stacktrace
+
+      # 7. Upload the compiled APK artifact to GitHub
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Omni-AI-Assistant-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
