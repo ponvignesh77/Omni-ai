@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "my-ai-assistant"
+rootProject.name = "Omni-AI"
 include(":app")
